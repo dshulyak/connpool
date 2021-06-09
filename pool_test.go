@@ -1,6 +1,7 @@
 package connpool
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -89,4 +90,45 @@ func TestPoolConcurrentDial(t *testing.T) {
 	for conn := range received {
 		require.Equal(t, &testConn{address: 1, tag: "1"}, conn)
 	}
+}
+
+func TestConnectAfterError(t *testing.T) {
+	var expectErr error
+	dialer := func(address int32) (Connection, error) {
+		if expectErr != nil {
+			return nil, expectErr
+		}
+		return &testConn{address: address, tag: "dialer"}, nil
+	}
+	p := New(WithDialer(dialer))
+	expectErr = errors.New("test")
+	conn, err := p.GetConnection(1)
+	require.Nil(t, conn)
+	require.ErrorIs(t, err, expectErr)
+
+	expectErr = nil
+	conn, err = p.GetConnection(1)
+	require.NotNil(t, conn)
+	require.NoError(t, err)
+}
+
+func TestDifferentNotBlocked(t *testing.T) {
+	long := int32(10)
+	ready := make(chan struct{}, 1)
+	dialer := func(address int32) (Connection, error) {
+		if address == long {
+			<-ready
+		}
+		return &testConn{address: address}, nil
+	}
+	p := New(WithDialer(dialer))
+	received := make(chan Connection, 1)
+	go func() {
+		conn, _ := p.GetConnection(long)
+		received <- conn
+	}()
+	conn, _ := p.GetConnection(1)
+	require.Equal(t, conn, &testConn{address: 1})
+	ready <- struct{}{}
+	require.Equal(t, <-received, &testConn{address: long})
 }
