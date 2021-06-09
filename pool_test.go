@@ -1,6 +1,9 @@
 package connpool
 
 import (
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -59,4 +62,31 @@ func TestPoolShutdown(t *testing.T) {
 	p.Shutdown()
 
 	require.ErrorIs(t, <-received, Closed)
+}
+
+func TestPoolConcurrentDial(t *testing.T) {
+	var cnt uint64
+	dialer := func(address int32) (Connection, error) {
+		return &testConn{address: address, tag: fmt.Sprintf("%d", atomic.AddUint64(&cnt, 1))}, nil
+	}
+	p := New(WithDialer(dialer))
+
+	var wg sync.WaitGroup
+	n := 10
+	wg.Add(n)
+
+	received := make(chan Connection, n)
+	for i := 0; i < n; i++ {
+
+		go func() {
+			defer wg.Done()
+			conn, _ := p.GetConnection(1)
+			received <- conn
+		}()
+	}
+	wg.Wait()
+	close(received)
+	for conn := range received {
+		require.Equal(t, &testConn{address: 1, tag: "1"}, conn)
+	}
 }
