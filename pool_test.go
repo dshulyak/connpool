@@ -78,7 +78,6 @@ func TestPoolConcurrentDial(t *testing.T) {
 
 	received := make(chan Connection, n)
 	for i := 0; i < n; i++ {
-
 		go func() {
 			defer wg.Done()
 			conn, _ := p.GetConnection(1)
@@ -114,10 +113,12 @@ func TestConnectAfterError(t *testing.T) {
 
 func TestDifferentNotBlocked(t *testing.T) {
 	long := int32(10)
+	dial := make(chan struct{}, 1)
 	ready := make(chan struct{}, 1)
 	dialer := func(address int32) (Connection, error) {
 		if address == long {
-			<-ready
+			ready <- struct{}{}
+			<-dial
 		}
 		return &testConn{address: address}, nil
 	}
@@ -127,8 +128,9 @@ func TestDifferentNotBlocked(t *testing.T) {
 		conn, _ := p.GetConnection(long)
 		received <- conn
 	}()
+	<-ready
 	conn, _ := p.GetConnection(1)
 	require.Equal(t, conn, &testConn{address: 1})
-	ready <- struct{}{}
+	dial <- struct{}{}
 	require.Equal(t, <-received, &testConn{address: long})
 }
