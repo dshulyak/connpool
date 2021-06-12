@@ -84,8 +84,8 @@ type Pool struct {
 
 func (p *Pool) GetConnection(address int32) (Connection, error) {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.closed {
-		p.mu.Unlock()
 		return nil, Closed
 	}
 
@@ -112,13 +112,11 @@ func (p *Pool) GetConnection(address int32) (Connection, error) {
 		p.mu.Unlock()
 		<-st.wait
 		p.mu.Lock()
-		defer p.mu.Unlock()
+
 		// call that initiated creation of the connection must cleanup after itself
 		if st.err != nil && !exist {
 			delete(p.connections, address)
 		}
-	} else {
-		defer p.mu.Unlock()
 	}
 	return st.conn, st.err
 }
