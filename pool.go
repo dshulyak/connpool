@@ -101,6 +101,9 @@ func (p *Pool) GetConnection(address int32) (Connection, error) {
 			defer p.mu.Unlock()
 			// either pool was shutdown or we received concurrent onNewRemoteConnection
 			if st.status() != opening {
+				if err == nil {
+					conn.Close()
+				}
 				return
 			}
 			st.conn = conn
