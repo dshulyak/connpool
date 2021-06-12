@@ -57,7 +57,7 @@ func TestPoolShutdown(t *testing.T) {
 	}()
 	<-ready
 	go func() {
-		time.Sleep(100 * time.Millisecond) // this is flaky2
+		time.Sleep(time.Millisecond) // this is flaky
 		dial <- struct{}{}
 	}()
 	p.Shutdown()
@@ -133,4 +133,18 @@ func TestDifferentNotBlocked(t *testing.T) {
 	require.Equal(t, conn, &testConn{address: 1})
 	dial <- struct{}{}
 	require.Equal(t, <-received, &testConn{address: long})
+}
+
+func BenchmarkGetConnection(b *testing.B) {
+	dialer := func(address int32) (Connection, error) {
+		return &testConn{address: address}, nil
+	}
+	p := New(WithDialer(dialer))
+	b.RunParallel(func(pb *testing.PB) {
+		i := int32(0)
+		for pb.Next() {
+			p.GetConnection(i)
+			i++
+		}
+	})
 }
